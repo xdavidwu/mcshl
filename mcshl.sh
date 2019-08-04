@@ -2,10 +2,9 @@
 
 BASEDIR=~/.mctest
 VLEVEL=1
-VLEVEL=999
+#VLEVEL=999
 
 WGET_LIM=128
-WGET_COUNT=0
 
 mkdir -p "$BASEDIR"
 
@@ -33,7 +32,7 @@ sha1_chkrm(){
 }
 
 rls(){
-	if [ "$1" == "snapshot" ];then
+	if [ "$1" == "--snapshot" ] || [ "$1" == "-s" ];then
 		curl https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.versions[].id'
 	else
 		curl https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.versions[]|select(.type=="release").id'
@@ -151,7 +150,7 @@ launch(){
 		fi
 	done
 
-	auth_player_name=xdavidwu
+	auth_player_name=$2
 	version_name=$1
 	game_directory=$BASEDIR
 	assets_root=$BASEDIR/assets
@@ -235,4 +234,53 @@ cksum(){
 	done
 }
 
-$@
+help(){
+	echo "Usage: $0 SUBCOMMAND"
+	echo
+	echo "Subcommands:"
+	echo "  rls [-s | --snapshot]"
+	echo "  List Minecraft versions avaliable for download"
+	echo "    -s, --snapshot\tenable snapshots"
+	echo
+	echo "  lls"
+	echo "  List installed Minecraft versions"
+	echo "  alias: ls"
+	echo
+	echo "  dl VERSION"
+	echo "  Download Minecraft VERSION"
+	echo "  alias: download"
+	echo
+	echo "  launch VERSION USERNAME"
+	echo "  Launch Minecraft VERSION with USERNAME"
+	echo
+	echo "  cksum VERSION"
+	echo "  Check VERSION files with sha1sum, remove if bad"
+	echo "  alias: check, checksum"
+}
+
+[ ! -n "$1" ] && set -- help
+
+case $1 in
+	rls|lls|dl|launch|cksum|help)
+		$@
+		;;
+	--help|-h)
+		help
+		;;
+	ls)
+		shift
+		lls $@
+		;;
+	download)
+		shift
+		dl $@
+		;;
+	check|checksum)
+		shift
+		cksum $@
+		;;
+	*)
+		log 1 "unknown subcommand $1"
+		exit 1
+		;;
+esac
