@@ -34,7 +34,7 @@ Usage: mcshl.sh [-b BASEDIR | --basedir BASEDIR]
 
 Subcommands:
   rls [-s | --snapshot]
-  List Minecraft versions avaliable for download
+  List Minecraft versions available for download
     -s, --snapshot        Enable snapshots
 
   lls

@@ -241,7 +241,7 @@ help(){
 	echo
 	echo "Subcommands:"
 	echo "  rls [-s | --snapshot]"
-	echo "  List Minecraft versions avaliable for download"
+	echo "  List Minecraft versions available for download"
 	echo "    -s, --snapshot        Enable snapshots"
 	echo
 	echo "  lls"
