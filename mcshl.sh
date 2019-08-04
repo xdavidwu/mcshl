@@ -1,13 +1,10 @@
 #!/bin/sh
 
-BASEDIR=~/.mctest
+BASEDIR=~/.minecraft
 VLEVEL=1
 #VLEVEL=999
 
 WGET_LIM=128
-
-mkdir -p "$BASEDIR"
-cd "$BASEDIR"
 
 log(){
 	if [ "$1" -le "$VLEVEL" ];then
@@ -236,12 +233,16 @@ cksum(){
 }
 
 help(){
-	echo "Usage: $0 SUBCOMMAND"
+	echo "Usage: $0 [-b BASEDIR | --basedir BASEDIR]"
+	echo "                [-v | --verbose] SUBCOMMAND"
+	echo
+	echo "  -b, --basedir BASEDIR   Use BASEDIR instead of ~/.minecraft"
+	echo "  -v, --verbose           Increase verbosity"
 	echo
 	echo "Subcommands:"
 	echo "  rls [-s | --snapshot]"
 	echo "  List Minecraft versions avaliable for download"
-	echo "    -s, --snapshot\tenable snapshots"
+	echo "    -s, --snapshot        Enable snapshots"
 	echo
 	echo "  lls"
 	echo "  List installed Minecraft versions"
@@ -260,6 +261,25 @@ help(){
 }
 
 [ ! -n "$1" ] && set -- help
+
+while true;do
+	case $1 in
+		-b|--basedir)
+			BASEDIR=$2
+			shift 2
+			;;
+		-v|--verbose)
+			VLEVEL=$((VLEVEL + 1))
+			shift
+			;;
+		*)
+			break
+			;;
+	esac
+done
+
+mkdir -p "$BASEDIR"
+cd "$BASEDIR"
 
 case $1 in
 	rls|lls|dl|launch|cksum|help)
