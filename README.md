@@ -4,7 +4,7 @@
 
 ## Dependencies
 
-* Any POSIX-compatiable shell
+* Any POSIX-compatible shell
 * jq
 * wget
 * curl
