@@ -7,6 +7,7 @@ VLEVEL=1
 WGET_LIM=128
 
 mkdir -p "$BASEDIR"
+cd "$BASEDIR"
 
 log(){
 	if [ "$1" -le "$VLEVEL" ];then
@@ -42,16 +43,16 @@ rls(){
 dl(){
 	VURL=$(curl https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.versions[]|select(.id=="'"$1"'").url')
 	[ ! -n "$VURL" ] && log 1 "cannot find version $1" && exit 1
-	mkdir -p "$BASEDIR/versions/$1"
-	wget -nc -P "$BASEDIR/versions/$1" "$VURL"
-	VJSONF="$BASEDIR/versions/$1/$1.json"
+	mkdir -p "versions/$1"
+	wget -nc -P "versions/$1" "$VURL"
+	VJSONF="versions/$1/$1.json"
 
 	# main jar
-	wget_wrapper -nc "$(jq -r '.downloads.client.url' $VJSONF)" -O "$BASEDIR/versions/$1/$1.jar"
+	wget_wrapper -nc "$(jq -r '.downloads.client.url' $VJSONF)" -O "versions/$1/$1.jar"
 
 	# libraries
-	mkdir -p "$BASEDIR/libraries"
-	mkdir -p "$BASEDIR/versions/$1/natives"
+	mkdir -p "libraries"
+	mkdir -p "versions/$1/natives"
 	for LJSON in $(jq -c '.libraries[]' $VJSONF);do
 		log 2 "found library $LJSON"
 		F=$(echo $LJSON | jq -r '.downloads.artifact.path')
@@ -59,8 +60,8 @@ dl(){
 		[ "$(echo $LJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="linux"' 2>/dev/null)" == "true" ] && log 2 "block: rule disallow linux" && continue
 
 		log 1 "downloading $F"
-		mkdir -p "$BASEDIR/libraries/""$(basepath $F)"
-		wget_wrapper -O "$BASEDIR/libraries/$F" -nc "$(echo $LJSON | jq -r '.downloads.artifact.url')"
+		mkdir -p "libraries/""$(basepath $F)"
+		wget_wrapper -O "libraries/$F" -nc "$(echo $LJSON | jq -r '.downloads.artifact.url')"
 
 		NAVKEY="$(echo $LJSON | jq '.natives.linux')"
 
@@ -68,41 +69,41 @@ dl(){
 			log 1 "downloading natives for $F"
 			TMPF=$(mktemp)
 			wget "$(echo $LJSON | jq -r '.downloads.classifiers.'$NAVKEY'.url')" -O "$TMPF"
-			unzip -o "$TMPF" -d "$BASEDIR/versions/$1/natives"
+			unzip -o "$TMPF" -d "versions/$1/natives"
 			rm "$TMPF"
 		fi
 	done
 
 	# assets
-	mkdir -p "$BASEDIR/assets/objects"
-	mkdir -p "$BASEDIR/assets/indexes"
+	mkdir -p "assets/objects"
+	mkdir -p "assets/indexes"
 	AID=$(jq -r '.assetIndex.id' "$VJSONF")
-	AF="$BASEDIR/assets/indexes/$AID.json"
-	wget -nc -P "$BASEDIR/assets/indexes" "$(jq -r '.assetIndex.url' "$VJSONF")"
+	AF="assets/indexes/$AID.json"
+	wget -nc -P "assets/indexes" "$(jq -r '.assetIndex.url' "$VJSONF")"
 
 	log 1 "downloading assets $AID"
 	for HASH in $(jq -r '.objects[].hash' "$AF");do
 		HASHHEAD=$(echo $HASH | head -c 2)
-		mkdir -p "$BASEDIR/assets/objects/$HASHHEAD"
-		wget_wrapper -nc -P "$BASEDIR/assets/objects/$HASHHEAD" https://resources.download.minecraft.net/$HASHHEAD/$HASH
+		mkdir -p "assets/objects/$HASHHEAD"
+		wget_wrapper -nc -P "assets/objects/$HASHHEAD" https://resources.download.minecraft.net/$HASHHEAD/$HASH
 	done
 
 	wait
 }
 
 launch(){
-	VJSONF="$BASEDIR/versions/$1/$1.json"
+	VJSONF="versions/$1/$1.json"
 	[ ! -f "$VJSONF" ] && log 1 "version $1 not found" && exit 1
 
 	OIFS=$IFS
 	IFS=$'\n'
 	CCONF=$VJSONF
 	while NVER=$(jq -r '.inheritsFrom' "$CCONF") && [ "$NVER" != "null" ];do
-		CCONF=$BASEDIR/versions/$NVER/$NVER.json
+		CCONF=versions/$NVER/$NVER.json
 		VJSONF=$VJSONF$'\n'$CCONF
 	done
 
-	natives_directory=$BASEDIR/versions/$1/natives
+	natives_directory=versions/$1/natives
 	launcher_name=minecraft-launcher
 	launcher_version=2.0.1003
 
@@ -113,7 +114,7 @@ launch(){
 
 		LPATH=$(echo "$LIB" | jq -r '.downloads.artifact.path')
 		if [ "$LPATH" != "null" ];then
-			classpath=$classpath:$BASEDIR/libraries/$LPATH
+			classpath=$classpath:libraries/$LPATH
 		else
 			# guess path
 			NAME=$(echo "$LIB" | jq -r '.name')
@@ -122,10 +123,10 @@ launch(){
 			VER=$(echo "$NAME" | cut -f 3 -d ':')
 			GPATH=$(echo "$ORG" | tr '.' '/')/$PKG/$VER/$PKG-$VER.jar
 			log 2 "classpath: no path for $NAME, guess $GPATH"
-			classpath=$classpath:$BASEDIR/libraries/$GPATH
+			classpath=$classpath:libraries/$GPATH
 		fi
 	done
-	classpath=$(echo "$classpath" | tail -c +2):$BASEDIR/versions/$1/$1.jar
+	classpath=$(echo "$classpath" | tail -c +2):versions/$1/$1.jar
 	
 	for ARGJSON in $(jq -c '.arguments.jvm[]' $VJSONF);do
 		log 2 "found jvm arg $ARGJSON"
@@ -152,8 +153,8 @@ launch(){
 
 	auth_player_name=$2
 	version_name=$1
-	game_directory=$BASEDIR
-	assets_root=$BASEDIR/assets
+	game_directory=.
+	assets_root=assets
 	assets_index_name=$(jq -r 'select(.assetIndex.id)|.assetIndex.id' $VJSONF | head -n 1)
 	auth_uuid=00000000-0000-0000-0000-000000000000
 	auth_access_token=null
@@ -192,14 +193,14 @@ launch(){
 lls(){
 	OIFS=$IFS
 	IFS=$'\n'
-	for VER in $(ls -1 "$BASEDIR/versions/");do
-		[ -f "$BASEDIR/versions/$VER/$VER.json" ] && echo $VER
+	for VER in $(ls -1 "versions/");do
+		[ -f "versions/$VER/$VER.json" ] && echo $VER
 	done
 	IFS=$OIFS
 }
 
 cksum(){
-	VJSONF="$BASEDIR/versions/$1/$1.json"
+	VJSONF="versions/$1/$1.json"
 	[ ! -f "$VJSONF" ] && log 1 "cannot find version $1" && exit 1
 
 	INH=$(jq -r '.inheritsFrom' "$VJSONF")
@@ -210,7 +211,7 @@ cksum(){
 	fi
 
 	# main jar
-	sha1_chkrm "$BASEDIR/versions/$1/$1.jar" $(jq -r '.downloads.client.sha1' "$VJSONF")
+	sha1_chkrm "versions/$1/$1.jar" $(jq -r '.downloads.client.sha1' "$VJSONF")
 
 	# libraries
 	for LJSON in $(jq -c '.libraries[]' $VJSONF);do
@@ -219,18 +220,18 @@ cksum(){
 		[ "$(echo $LJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="linux"' 2>/dev/null)" == "true" ] && log 2 "block: rule allow not linux" && continue
 		[ "$(echo $LJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="linux"' 2>/dev/null)" == "true" ] && log 2 "block: rule disallow linux" && continue
 
-		sha1_chkrm "$BASEDIR/libraries/$F" "$(echo $LJSON | jq -r '.downloads.artifact.sha1')"
+		sha1_chkrm "libraries/$F" "$(echo $LJSON | jq -r '.downloads.artifact.sha1')"
 		# TODO find a way to cover natives?
 	done
 
 	# assets
 	AID=$(jq -r '.assetIndex.id' "$VJSONF")
-	AF="$BASEDIR/assets/indexes/$AID.json"
+	AF="assets/indexes/$AID.json"
 	sha1_chkrm "$AF" $(jq -r '.assetIndex.sha1' "$VJSONF")
 
 	for HASH in $(jq -r '.objects[].hash' "$AF");do
 		HASHHEAD=$(echo $HASH | head -c 2)
-		sha1_chkrm "$BASEDIR/assets/objects/$HASHHEAD/$HASH" "$HASH"
+		sha1_chkrm "assets/objects/$HASHHEAD/$HASH" "$HASH"
 	done
 }
 
