@@ -27,6 +27,11 @@ wget_wrapper(){
 	wget --compression=auto $@ &
 }
 
+sha1_chkrm(){
+	SUM=$(sha1sum "$1" | cut -f 1 -d ' ')
+	[ "$SUM" != "$2" ] && log 1 "sha1 $1 mismatch, deleting" && rm "$1"
+}
+
 rls(){
 	if [ "$1" == "snapshot" ];then
 		curl https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.versions[].id'
@@ -93,8 +98,7 @@ launch(){
 	OIFS=$IFS
 	IFS=$'\n'
 	CCONF=$VJSONF
-	while [ "$(jq -r '.inheritsFrom' $CCONF)" != "null" ];do
-		NVER=$(jq -r '.inheritsFrom' $CCONF)
+	while NVER=$(jq -r '.inheritsFrom' "$CCONF") && [ "$NVER" != "null" ];do
 		CCONF=$BASEDIR/versions/$NVER/$NVER.json
 		VJSONF=$VJSONF$'\n'$CCONF
 	done
@@ -181,9 +185,47 @@ launch(){
 		fi
 	done
 
-	echo $JVMARGS $(jq -r 'select(.mainClass)|.mainClass' $VJSONF | head -n 1) $GAMEARGS
+	log 2 "cmd: $JVMARGS $(jq -r 'select(.mainClass)|.mainClass' $VJSONF | head -n 1) $GAMEARGS"
 	java $JVMARGS $(jq -r 'select(.mainClass)|.mainClass' $VJSONF | head -n 1) $GAMEARGS
 	IFS=$OIFS
+}
+
+lls(){
+	OIFS=$IFS
+	IFS=$'\n'
+	for VER in $(ls -1 "$BASEDIR/versions/");do
+		[ -f "$BASEDIR/versions/$VER/$VER.json" ] && echo $VER
+	done
+	IFS=$OIFS
+}
+
+cksum(){
+	VJSONF="$BASEDIR/versions/$1/$1.json"
+	[ ! -f "$VJSONF" ] && log 1 "cannot find version $1" && exit 1
+
+	# main jar
+	sha1_chkrm "$BASEDIR/versions/$1/$1.jar" $(jq -r '.downloads.client.sha1' "$VJSONF")
+
+	# libraries
+	for LJSON in $(jq -c '.libraries[]' $VJSONF);do
+		log 2 "found library $LJSON"
+		F=$(echo $LJSON | jq -r '.downloads.artifact.path')
+		[ "$(echo $LJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="linux"' 2>/dev/null)" == "true" ] && log 2 "block: rule allow not linux" && continue
+		[ "$(echo $LJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="linux"' 2>/dev/null)" == "true" ] && log 2 "block: rule disallow linux" && continue
+
+		sha1_chkrm "$BASEDIR/libraries/$F" "$(echo $LJSON | jq -r '.downloads.artifact.sha1')"
+		# TODO find a way to cover natives?
+	done
+
+	# assets
+	AID=$(jq -r '.assetIndex.id' "$VJSONF")
+	AF="$BASEDIR/assets/indexes/$AID.json"
+	sha1_chkrm "$AF" $(jq -r '.assetIndex.sha1' "$VJSONF")
+
+	for HASH in $(jq -r '.objects[].hash' "$AF");do
+		HASHHEAD=$(echo $HASH | head -c 2)
+		sha1_chkrm "$BASEDIR/assets/objects/$HASHHEAD/$HASH" "$HASH"
+	done
 }
 
 $@
