@@ -203,6 +203,13 @@ cksum(){
 	VJSONF="$BASEDIR/versions/$1/$1.json"
 	[ ! -f "$VJSONF" ] && log 1 "cannot find version $1" && exit 1
 
+	INH=$(jq -r '.inheritsFrom' "$VJSONF")
+	if [ "$INH" != "null" ];then
+		log 1 "version $1 uses inheritance, maybe a mod, checking $INH instead"
+		cksum "$INH"
+		return
+	fi
+
 	# main jar
 	sha1_chkrm "$BASEDIR/versions/$1/$1.jar" $(jq -r '.downloads.client.sha1' "$VJSONF")
 
