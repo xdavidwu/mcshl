@@ -6,6 +6,36 @@ VLEVEL=1
 
 WGET_LIM=128
 
+WGET_QUIET=0
+
+[ ! -n "$1" ] && set -- help
+
+while true;do
+	case $1 in
+		-b|--basedir)
+			BASEDIR=$2
+			shift 2
+			;;
+		-v|--verbose)
+			VLEVEL=$((VLEVEL + 1))
+			shift
+			;;
+		-q|--wget-quiet)
+			WGET_QUIET=1
+			shift
+			;;
+		*)
+			break
+			;;
+	esac
+done
+
+if [ "$WGET_QUIET" -gt "0" ];then
+	alias wget="wget -q --compression=auto"
+else
+	alias wget="wget --compression=auto"
+fi
+
 log(){
 	if [ "$1" -le "$VLEVEL" ];then
 		shift
@@ -21,7 +51,7 @@ wget_wrapper(){
 	while [ "$(jobs | wc -l)" -gt "$WGET_LIM" ];do
 		sleep 1
 	done
-	wget --compression=auto $@ &
+	wget $@ &
 }
 
 sha1_chkrm(){
@@ -31,14 +61,14 @@ sha1_chkrm(){
 
 rls(){
 	if [ "$1" == "--snapshot" ] || [ "$1" == "-s" ];then
-		curl https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.versions[].id'
+		wget -O - https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.versions[].id'
 	else
-		curl https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.versions[]|select(.type=="release").id'
+		wget -O - https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.versions[]|select(.type=="release").id'
 	fi
 }
 
 dl(){
-	VURL=$(curl https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.versions[]|select(.id=="'"$1"'").url')
+	VURL=$(wget -O - https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.versions[]|select(.id=="'"$1"'").url')
 	[ ! -n "$VURL" ] && log 1 "cannot find version $1" && exit 1
 	mkdir -p "versions/$1"
 	wget -nc -P "versions/$1" "$VURL"
@@ -272,10 +302,11 @@ rm_asset(){
 
 help(){
 	echo "Usage: $0 [-b BASEDIR | --basedir BASEDIR]"
-	echo "                [-v | --verbose] SUBCOMMAND"
+	echo "                [-v | --verbose] [-q | --wget-quiet] SUBCOMMAND"
 	echo
 	echo "  -b, --basedir BASEDIR   Use BASEDIR instead of ~/.minecraft"
 	echo "  -v, --verbose           Increase verbosity"
+	echo "  -q, --wget-quiet        Make wget quiet"
 	echo
 	echo "Subcommands:"
 	echo "  rls [-s | --snapshot]"
@@ -311,24 +342,6 @@ help(){
 	echo "  the same files and need to download with dl again"
 	echo "  alias: rmasset"
 }
-
-[ ! -n "$1" ] && set -- help
-
-while true;do
-	case $1 in
-		-b|--basedir)
-			BASEDIR=$2
-			shift 2
-			;;
-		-v|--verbose)
-			VLEVEL=$((VLEVEL + 1))
-			shift
-			;;
-		*)
-			break
-			;;
-	esac
-done
 
 mkdir -p "$BASEDIR"
 cd "$BASEDIR"

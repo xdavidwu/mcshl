@@ -7,7 +7,6 @@
 * Any POSIX-compatible shell
 * jq
 * wget
-* curl
 * cut, tr, sha1sum, mkdir, ls ... basic commands that almost always exist
 * java for launching minecraft
 
@@ -20,17 +19,18 @@
 ## Not implemented yet
 
 * auth and those things that need auth
-* delete/ clean
+* delete/ clean jar libraries
 * older formats
 
 ## Usage
 
 ```
 Usage: mcshl.sh [-b BASEDIR | --basedir BASEDIR]
-                [-v | --verbose] SUBCOMMAND
+                [-v | --verbose] [-q | --wget-quiet] SUBCOMMAND
 
   -b, --basedir BASEDIR   Use BASEDIR instead of ~/.minecraft
   -v, --verbose           Increase verbosity
+  -q, --wget-quiet        Make wget quiet
 
 Subcommands:
   rls [-s | --snapshot]
