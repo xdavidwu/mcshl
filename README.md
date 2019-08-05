@@ -37,8 +37,9 @@ Subcommands:
   List Minecraft versions available for download
     -s, --snapshot        Enable snapshots
 
-  lls
+  lls [-a | --asset]
   List installed Minecraft versions
+    -a, --asset           Also list asset used
   alias: ls
 
   dl VERSION
@@ -51,4 +52,17 @@ Subcommands:
   cksum VERSION
   Check VERSION files with sha1sum, remove if bad
   alias: check, checksum
+
+  rm_main VERSION
+  Remove main jar, json and natives for VERSION
+  alias: rm
+
+  lls_asset
+  List installed asset versions
+  alias: lsasset
+
+  rm_asset VERSION
+  Remove asset VERSION, this may break other versions that share
+  the same files and need to download with dl again
+  alias: rmasset
 ```
