@@ -188,10 +188,25 @@ launch(){
 }
 
 lls(){
+	[ ! -d "versions" ] && return
 	OIFS=$IFS
 	IFS=$'\n'
 	for VER in $(ls -1 "versions/");do
-		[ -f "versions/$VER/$VER.json" ] && echo $VER
+		VJSONF="versions/$VER/$VER.json"
+		if [ -f "$VJSONF" ];then
+			if [ "$1" == "-a" ] || [ "$1" == "--asset" ];then
+				AVER=$(jq -r '.assetIndex.id' "$VJSONF")
+				INH=$(jq -r '.inheritsFrom' "$VJSONF")
+				while [ "$AVER" == "null" ] && [ "$INH" != "null" ];do
+					VJSONF="versions/$INH/$INH.json"
+					AVER=$(jq -r '.assetIndex.id' "$VJSONF")
+					INH=$(jq -r '.inheritsFrom' "$VJSONF")
+				done
+				echo "$VER" "$AVER"
+			else
+				echo "$VER"
+			fi
+		fi
 	done
 	IFS=$OIFS
 }
@@ -232,6 +247,29 @@ cksum(){
 	done
 }
 
+rm_main(){
+	[ ! -d "versions/$1" ] && log 1 "cannot find version $1" && exit 1
+	rm -r "versions/$1"
+}
+
+lls_asset(){
+	[ ! -d "assets/indexes" ] && return
+	ls -1 "assets/indexes" | rev | cut -f 2- -d '.' | rev
+}
+
+rm_asset(){
+	AF="assets/indexes/$1.json"
+	[ ! -f "$AF" ] && log 1 "cannot find asset $1" && exit 1
+
+	for HASH in $(jq -r '.objects[].hash' "$AF");do
+		HASHHEAD=$(echo $HASH | head -c 2)
+		rm "assets/objects/$HASHHEAD/$HASH"
+		rmdir "assets/objects/$HASHHEAD" 2>/dev/null
+	done
+
+	rm "$AF"
+}
+
 help(){
 	echo "Usage: $0 [-b BASEDIR | --basedir BASEDIR]"
 	echo "                [-v | --verbose] SUBCOMMAND"
@@ -244,8 +282,9 @@ help(){
 	echo "  List Minecraft versions available for download"
 	echo "    -s, --snapshot        Enable snapshots"
 	echo
-	echo "  lls"
+	echo "  lls [-a | --asset]"
 	echo "  List installed Minecraft versions"
+	echo "    -a, --asset           Also list asset used"
 	echo "  alias: ls"
 	echo
 	echo "  dl VERSION"
@@ -258,6 +297,19 @@ help(){
 	echo "  cksum VERSION"
 	echo "  Check VERSION files with sha1sum, remove if bad"
 	echo "  alias: check, checksum"
+	echo
+	echo "  rm_main VERSION"
+	echo "  Remove main jar, json and natives for VERSION"
+	echo "  alias: rm"
+	echo
+	echo "  lls_asset"
+	echo "  List installed asset versions"
+	echo "  alias: lsasset"
+	echo
+	echo "  rm_asset VERSION"
+	echo "  Remove asset VERSION, this may break other versions that share"
+	echo "  the same files and need to download with dl again"
+	echo "  alias: rmasset"
 }
 
 [ ! -n "$1" ] && set -- help
@@ -282,7 +334,7 @@ mkdir -p "$BASEDIR"
 cd "$BASEDIR"
 
 case $1 in
-	rls|lls|dl|launch|cksum|help)
+	rls|lls|dl|launch|cksum|rm_main|lls_asset|rm_asset|help)
 		$@
 		;;
 	--help|-h)
@@ -299,6 +351,18 @@ case $1 in
 	check|checksum)
 		shift
 		cksum $@
+		;;
+	rm)
+		shift
+		rm_main $@
+		;;
+	lsasset)
+		shift
+		lls_asset $@
+		;;
+	rmasset)
+		shift
+		rm_asset $@
 		;;
 	*)
 		log 1 "unknown subcommand $1"
