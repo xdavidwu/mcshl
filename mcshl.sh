@@ -131,6 +131,12 @@ launch(){
 	done
 
 	natives_directory=versions/$1/natives
+	NVER=$1
+	while [ ! -d "$natives_directory" ];do
+		NVER=$(jq -r '.inheritsFrom' "versions/$NVER/$NVER.json")
+		[ "$NVER" == "null" ] && log 1 "natives for $1 not found" && exit 1
+		natives_directory=versions/$NVER/natives
+	done
 	launcher_name=minecraft-launcher
 	launcher_version=2.0.1003
 
