@@ -122,6 +122,8 @@ launch(){
 	VJSONF="versions/$1/$1.json"
 	[ ! -f "$VJSONF" ] && log 1 "version $1 not found" && exit 1
 
+	[ ! -n "$2" ] && log 1 "username not provided" && exit 1
+
 	OIFS=$IFS
 	IFS=$'\n'
 	CCONF=$VJSONF
