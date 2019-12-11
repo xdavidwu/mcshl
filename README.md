@@ -1,6 +1,6 @@
 # mcshl
 
-[WIP] yet another minecraft launcher, but in shell
+yet another minecraft launcher, but in shell
 
 ## Dependencies
 
