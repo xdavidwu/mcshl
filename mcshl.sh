@@ -159,6 +159,17 @@ launch(){
 			GPATH=$(echo "$ORG" | tr '.' '/')/$PKG/$VER/$PKG-$VER.jar
 			log 2 "classpath: no path for $NAME, guess $GPATH"
 			classpath=$classpath:libraries/$GPATH
+			if [ ! -f "libraries/$GPATH" ];then
+				log 1 "library $GPATH missing"
+				URL=$(echo "$LIB" | jq -r '.url')
+				if [ "$URL" != "null" ];then
+					log 2 "library: download path with .url found"
+					log 1 "downloading missing $GPATH from $URL"
+					mkdir -p "$(dirname libraries/$GPATH)"
+					wget_wrapper "$URL/$GPATH" -O "libraries/$GPATH"
+					wait
+				fi
+			fi
 		fi
 	done
 	classpath=$(echo "$classpath" | tail -c +2):versions/$1/$1.jar
