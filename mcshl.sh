@@ -172,7 +172,11 @@ launch(){
 			fi
 		fi
 	done
-	classpath=$(echo "$classpath" | tail -c +2):versions/$1/$1.jar
+	classpath=$(echo "$classpath" | tail -c +2)
+	for VERF in $VJSONF;do
+		VER=$(basename "$VERF" ".json")
+		classpath=$classpath:versions/$VER/$VER.jar
+	done
 	
 	for ARGJSON in $(jq -c '.arguments.jvm[]' $VJSONF);do
 		log 2 "found jvm arg $ARGJSON"
