@@ -8,6 +8,12 @@ WGET_LIM=128
 
 WGET_QUIET=0
 
+set -e
+
+echo_safe() {
+	printf "%s\n" "$*"
+}
+
 [ ! -n "$1" ] && set -- help
 
 while true;do
@@ -39,12 +45,12 @@ fi
 log(){
 	if [ "$1" -le "$VLEVEL" ];then
 		shift
-		echo $@
+		echo_safe $@
 	fi
 }
 
 basepath(){
-	echo "$1" | rev | cut -f 2- -d '/' | rev
+	echo_safe "$1" | rev | cut -f 2- -d '/' | rev
 }
 
 wget_wrapper(){
@@ -60,7 +66,7 @@ sha1_chkrm(){
 }
 
 rls(){
-	if [ "$1" == "--snapshot" ] || [ "$1" == "-s" ];then
+	if [ "$1" = "--snapshot" ] || [ "$1" = "-s" ];then
 		wget -O - https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.versions[].id'
 	else
 		wget -O - https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.versions[]|select(.type=="release").id'
@@ -82,20 +88,20 @@ dl(){
 	mkdir -p "versions/$1/natives"
 	for LJSON in $(jq -c '.libraries[]' $VJSONF);do
 		log 2 "found library $LJSON"
-		F=$(echo $LJSON | jq -r '.downloads.artifact.path')
-		[ "$(echo $LJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="linux"' 2>/dev/null)" == "true" ] && log 2 "block: rule allow not linux" && continue
-		[ "$(echo $LJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="linux"' 2>/dev/null)" == "true" ] && log 2 "block: rule disallow linux" && continue
+		F=$(echo_safe $LJSON | jq -r '.downloads.artifact.path')
+		[ "$(echo_safe $LJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule allow not linux" && continue
+		[ "$(echo_safe $LJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule disallow linux" && continue
 
 		log 1 "downloading $F"
 		mkdir -p "libraries/""$(basepath $F)"
-		wget_wrapper -O "libraries/$F" -nc "$(echo $LJSON | jq -r '.downloads.artifact.url')"
+		wget_wrapper -O "libraries/$F" -nc "$(echo_safe $LJSON | jq -r '.downloads.artifact.url')"
 
-		NAVKEY="$(echo $LJSON | jq '.natives.linux')"
+		NAVKEY="$(echo_safe $LJSON | jq '.natives.linux')"
 
 		if [ "$NAVKEY" != "null" ];then
 			log 1 "downloading natives for $F"
 			TMPF=$(mktemp)
-			wget "$(echo $LJSON | jq -r '.downloads.classifiers.'$NAVKEY'.url')" -O "$TMPF"
+			wget "$(echo_safe $LJSON | jq -r '.downloads.classifiers.'$NAVKEY'.url')" -O "$TMPF"
 			unzip -o "$TMPF" -d "versions/$1/natives"
 			rm "$TMPF"
 		fi
@@ -110,7 +116,7 @@ dl(){
 
 	log 1 "downloading assets $AID"
 	for HASH in $(jq -r '.objects[].hash' "$AF");do
-		HASHHEAD=$(echo $HASH | head -c 2)
+		HASHHEAD=$(echo_safe $HASH | head -c 2)
 		mkdir -p "assets/objects/$HASHHEAD"
 		wget_wrapper -nc -P "assets/objects/$HASHHEAD" https://resources.download.minecraft.net/$HASHHEAD/$HASH
 	done
@@ -125,18 +131,20 @@ launch(){
 	[ ! -n "$2" ] && log 1 "username not provided" && exit 1
 
 	OIFS=$IFS
-	IFS=$'\n'
+	IFS='
+'
 	CCONF=$VJSONF
 	while NVER=$(jq -r '.inheritsFrom' "$CCONF") && [ "$NVER" != "null" ];do
 		CCONF=versions/$NVER/$NVER.json
-		VJSONF=$VJSONF$'\n'$CCONF
+		VJSONF=$VJSONF'
+'$CCONF
 	done
 
 	natives_directory=versions/$1/natives
 	NVER=$1
 	while [ ! -d "$natives_directory" ];do
 		NVER=$(jq -r '.inheritsFrom' "versions/$NVER/$NVER.json")
-		[ "$NVER" == "null" ] && log 1 "natives for $1 not found" && exit 1
+		[ "$NVER" = "null" ] && log 1 "natives for $1 not found" && exit 1
 		natives_directory=versions/$NVER/natives
 	done
 	launcher_name=minecraft-launcher
@@ -144,24 +152,24 @@ launch(){
 
 	for LIB in $(jq -c '.libraries[]' $VJSONF);do
 		log 2 "found library $LIB"
-		[ "$(echo $LIB | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="linux"' 2>/dev/null)" == "true" ] && log 2 "block: rule allow not linux" && continue
-		[ "$(echo $LIB | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="linux"' 2>/dev/null)" == "true" ] && log 2 "block: rule disallow linux" && continue
+		[ "$(echo_safe $LIB | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule allow not linux" && continue
+		[ "$(echo_safe $LIB | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule disallow linux" && continue
 
-		LPATH=$(echo "$LIB" | jq -r '.downloads.artifact.path')
+		LPATH=$(echo_safe "$LIB" | jq -r '.downloads.artifact.path')
 		if [ "$LPATH" != "null" ];then
 			classpath=$classpath:libraries/$LPATH
 		else
 			# guess path
-			NAME=$(echo "$LIB" | jq -r '.name')
-			ORG=$(echo "$NAME" | cut -f 1 -d ':')
-			PKG=$(echo "$NAME" | cut -f 2 -d ':')
-			VER=$(echo "$NAME" | cut -f 3 -d ':')
-			GPATH=$(echo "$ORG" | tr '.' '/')/$PKG/$VER/$PKG-$VER.jar
+			NAME=$(echo_safe "$LIB" | jq -r '.name')
+			ORG=$(echo_safe "$NAME" | cut -f 1 -d ':')
+			PKG=$(echo_safe "$NAME" | cut -f 2 -d ':')
+			VER=$(echo_safe "$NAME" | cut -f 3 -d ':')
+			GPATH=$(echo_safe "$ORG" | tr '.' '/')/$PKG/$VER/$PKG-$VER.jar
 			log 2 "classpath: no path for $NAME, guess $GPATH"
 			classpath=$classpath:libraries/$GPATH
 			if [ ! -f "libraries/$GPATH" ];then
 				log 1 "library $GPATH missing"
-				URL=$(echo "$LIB" | jq -r '.url')
+				URL=$(echo_safe "$LIB" | jq -r '.url')
 				if [ "$URL" != "null" ];then
 					log 2 "library: download path with .url found"
 					log 1 "downloading missing $GPATH from $URL"
@@ -172,7 +180,7 @@ launch(){
 			fi
 		fi
 	done
-	classpath=$(echo "$classpath" | tail -c +2)
+	classpath=$(echo_safe "$classpath" | tail -c +2)
 	for VERF in $VJSONF;do
 		VER=$(basename "$VERF" ".json")
 		classpath=$classpath:versions/$VER/$VER.jar
@@ -180,22 +188,25 @@ launch(){
 	
 	for ARGJSON in $(jq -c '.arguments.jvm[]' $VJSONF);do
 		log 2 "found jvm arg $ARGJSON"
-		if [ "$(echo $ARGJSON | head -c 1)" == '"' ];then
-			eval JVMARG=$(echo "$ARGJSON" | jq -r '.')
-			JVMARGS=$JVMARGS$'\n'$JVMARG
+		if [ "$(echo_safe $ARGJSON | head -c 1)" = '"' ];then
+			eval JVMARG=$(echo_safe "$ARGJSON" | jq -r '.')
+			JVMARGS=$JVMARGS'
+'$JVMARG
 		else
-			[ "$(echo $ARGJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="linux"' 2>/dev/null)" == "true" ] && log 2 "block: rule allow not linux" && continue
-			[ "$(echo $ARGJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="linux"' 2>/dev/null)" == "true" ] && log 2 "block: rule disallow linux" && continue
-			[ "$(echo $ARGJSON | jq '.rules[]|select(.action=="allow").os.arch|.!=null and .=="x86"' 2>/dev/null)" == "true" ] && [ -n "$(file -L $(which java) | grep x86-64)" ] && log 2 "block: rule allow x86" && continue
+			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule allow not linux" && continue
+			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule disallow linux" && continue
+			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="allow").os.arch|.!=null and .=="x86"' 2>/dev/null)" = "true" ] && [ -n "$(file -L $(which java) | grep x86-64)" ] && log 2 "block: rule allow x86" && continue
 
-			VALJSON=$(echo "$ARGJSON" | jq '.value')
-			if [ "$(echo $VALJSON | head -c 1)" == '"' ];then
-				eval JVMARG=$(echo "$VALJSON" | jq -r '.')
-				JVMARGS=$JVMARGS$'\n'$JVMARG
+			VALJSON=$(echo_safe ${ARGJSON} | tee /tmp/log | jq '.value')
+			if [ "$(echo_safe $VALJSON | head -c 1)" = '"' ];then
+				eval JVMARG=$(echo_safe "$VALJSON" | jq -r '.')
+				JVMARGS=$JVMARGS'
+'$JVMARG
 			else
-				for VAL in $(echo "$VALJSON" | jq -r '.[]');do
+				for VAL in $(echo_safe "$VALJSON" | jq -r '.[]');do
 					eval JVMARG=$VAL
-					JVMARGS=$JVMARGS$'\n'$JVMARG
+					JVMARGS=$JVMARGS'
+'$JVMARG
 				done
 			fi
 		fi
@@ -213,23 +224,26 @@ launch(){
 
 	for ARGJSON in $(jq -c '.arguments.game[]' $VJSONF);do
 		log 2 "found game arg $ARGJSON"
-		if [ "$(echo $ARGJSON | head -c 1)" == '"' ];then
-			eval GAMEARG=$(echo "$ARGJSON" | jq -r '.')
-			GAMEARGS=$GAMEARGS$'\n'$GAMEARG
+		if [ "$(echo_safe $ARGJSON | head -c 1)" = '"' ];then
+			eval GAMEARG=$(echo_safe "$ARGJSON" | jq -r '.')
+			GAMEARGS=$GAMEARGS'
+'$GAMEARG
 		else
-			[ "$(echo $ARGJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="linux"' 2>/dev/null)" == "true" ] && log 2 "block: rule allow not linux" && continue
-			[ "$(echo $ARGJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="linux"' 2>/dev/null)" == "true" ] && log 2 "block: rule disallow linux" && continue
-			[ "$(echo $ARGJSON | jq '.rules[]|select(.action=="allow").os.arch|.!=null and .=="x86"' 2>/dev/null)" == "true" ] && [ -n "$(file -L $(which java) | grep x86-64)" ] && log 2 "block: rule allow x86" && continue
-			[ "$(echo $ARGJSON | jq '.rules[]|select(.action=="allow").features!=null' 2>/dev/null)" == "true" ] && log 2 "block: skip demo and resolution" && continue
+			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule allow not linux" && continue
+			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule disallow linux" && continue
+			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="allow").os.arch|.!=null and .=="x86"' 2>/dev/null)" = "true" ] && [ -n "$(file -L $(which java) | grep x86-64)" ] && log 2 "block: rule allow x86" && continue
+			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="allow").features!=null' 2>/dev/null)" = "true" ] && log 2 "block: skip demo and resolution" && continue
 
-			VALJSON=$(echo "$ARGJSON" | jq '.value')
-			if [ "$(echo $VALJSON | head -c 1)" == '"' ];then
-				eval GAMEARG=$(echo "$VALJSON" | jq -r '.')
-				GAMEARGS=$GAMEARGS$'\n'$GAMEARG
+			VALJSON=$(echo_safe "$ARGJSON" | jq '.value')
+			if [ "$(echo_safe $VALJSON | head -c 1)" = '"' ];then
+				eval GAMEARG=$(echo_safe "$VALJSON" | jq -r '.')
+				GAMEARGS=$GAMEARGS'
+'$GAMEARG
 			else
-				for VAL in $(echo "$VALJSON" | jq -r '.[]');do
+				for VAL in $(echo_safe "$VALJSON" | jq -r '.[]');do
 					eval GAMEARG=$VAL
-					GAMEARGS=$GAMEARGS$'\n'$GAMEARG
+					GAMEARGS=$GAMEARGS'
+'$GAMEARG
 				done
 			fi
 		fi
@@ -243,21 +257,22 @@ launch(){
 lls(){
 	[ ! -d "versions" ] && return
 	OIFS=$IFS
-	IFS=$'\n'
+	IFS='
+'
 	for VER in $(ls -1 "versions/");do
 		VJSONF="versions/$VER/$VER.json"
 		if [ -f "$VJSONF" ];then
-			if [ "$1" == "-a" ] || [ "$1" == "--asset" ];then
+			if [ "$1" = "-a" ] || [ "$1" = "--asset" ];then
 				AVER=$(jq -r '.assetIndex.id' "$VJSONF")
 				INH=$(jq -r '.inheritsFrom' "$VJSONF")
-				while [ "$AVER" == "null" ] && [ "$INH" != "null" ];do
+				while [ "$AVER" = "null" ] && [ "$INH" != "null" ];do
 					VJSONF="versions/$INH/$INH.json"
 					AVER=$(jq -r '.assetIndex.id' "$VJSONF")
 					INH=$(jq -r '.inheritsFrom' "$VJSONF")
 				done
-				echo "$VER" "$AVER"
+				echo_safe "$VER" "$AVER"
 			else
-				echo "$VER"
+				echo_safe "$VER"
 			fi
 		fi
 	done
@@ -281,11 +296,11 @@ cksum(){
 	# libraries
 	for LJSON in $(jq -c '.libraries[]' $VJSONF);do
 		log 2 "found library $LJSON"
-		F=$(echo $LJSON | jq -r '.downloads.artifact.path')
-		[ "$(echo $LJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="linux"' 2>/dev/null)" == "true" ] && log 2 "block: rule allow not linux" && continue
-		[ "$(echo $LJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="linux"' 2>/dev/null)" == "true" ] && log 2 "block: rule disallow linux" && continue
+		F=$(echo_safe $LJSON | jq -r '.downloads.artifact.path')
+		[ "$(echo_safe $LJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule allow not linux" && continue
+		[ "$(echo_safe $LJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule disallow linux" && continue
 
-		sha1_chkrm "libraries/$F" "$(echo $LJSON | jq -r '.downloads.artifact.sha1')"
+		sha1_chkrm "libraries/$F" "$(echo_safe $LJSON | jq -r '.downloads.artifact.sha1')"
 		# TODO find a way to cover natives?
 	done
 
@@ -295,7 +310,7 @@ cksum(){
 	sha1_chkrm "$AF" $(jq -r '.assetIndex.sha1' "$VJSONF")
 
 	for HASH in $(jq -r '.objects[].hash' "$AF");do
-		HASHHEAD=$(echo $HASH | head -c 2)
+		HASHHEAD=$(echo_safe $HASH | head -c 2)
 		sha1_chkrm "assets/objects/$HASHHEAD/$HASH" "$HASH"
 	done
 }
@@ -315,7 +330,7 @@ rm_asset(){
 	[ ! -f "$AF" ] && log 1 "cannot find asset $1" && exit 1
 
 	for HASH in $(jq -r '.objects[].hash' "$AF");do
-		HASHHEAD=$(echo $HASH | head -c 2)
+		HASHHEAD=$(echo_safe $HASH | head -c 2)
 		rm "assets/objects/$HASHHEAD/$HASH"
 		rmdir "assets/objects/$HASHHEAD" 2>/dev/null
 	done
@@ -324,46 +339,46 @@ rm_asset(){
 }
 
 help(){
-	echo "Usage: $0 [-b BASEDIR | --basedir BASEDIR]"
-	echo "                [-v | --verbose] [-q | --wget-quiet] SUBCOMMAND"
-	echo
-	echo "  -b, --basedir BASEDIR   Use BASEDIR instead of ~/.minecraft"
-	echo "  -v, --verbose           Increase verbosity"
-	echo "  -q, --wget-quiet        Make wget quiet"
-	echo
-	echo "Subcommands:"
-	echo "  rls [-s | --snapshot]"
-	echo "  List Minecraft versions available for download"
-	echo "    -s, --snapshot        Enable snapshots"
-	echo
-	echo "  lls [-a | --asset]"
-	echo "  List installed Minecraft versions"
-	echo "    -a, --asset           Also list asset used"
-	echo "  alias: ls"
-	echo
-	echo "  dl VERSION"
-	echo "  Download Minecraft VERSION"
-	echo "  alias: download"
-	echo
-	echo "  launch VERSION USERNAME"
-	echo "  Launch Minecraft VERSION with USERNAME"
-	echo
-	echo "  cksum VERSION"
-	echo "  Check VERSION files with sha1sum, remove if bad"
-	echo "  alias: check, checksum"
-	echo
-	echo "  rm_main VERSION"
-	echo "  Remove main jar, json and natives for VERSION"
-	echo "  alias: rm"
-	echo
-	echo "  lls_asset"
-	echo "  List installed asset versions"
-	echo "  alias: lsasset"
-	echo
-	echo "  rm_asset VERSION"
-	echo "  Remove asset VERSION, this may break other versions that share"
-	echo "  the same files and need to download with dl again"
-	echo "  alias: rmasset"
+	echo_safe "Usage: $0 [-b BASEDIR | --basedir BASEDIR]"
+	echo_safe "                [-v | --verbose] [-q | --wget-quiet] SUBCOMMAND"
+	echo_safe
+	echo_safe "  -b, --basedir BASEDIR   Use BASEDIR instead of ~/.minecraft"
+	echo_safe "  -v, --verbose           Increase verbosity"
+	echo_safe "  -q, --wget-quiet        Make wget quiet"
+	echo_safe
+	echo_safe "Subcommands:"
+	echo_safe "  rls [-s | --snapshot]"
+	echo_safe "  List Minecraft versions available for download"
+	echo_safe "    -s, --snapshot        Enable snapshots"
+	echo_safe
+	echo_safe "  lls [-a | --asset]"
+	echo_safe "  List installed Minecraft versions"
+	echo_safe "    -a, --asset           Also list asset used"
+	echo_safe "  alias: ls"
+	echo_safe
+	echo_safe "  dl VERSION"
+	echo_safe "  Download Minecraft VERSION"
+	echo_safe "  alias: download"
+	echo_safe
+	echo_safe "  launch VERSION USERNAME"
+	echo_safe "  Launch Minecraft VERSION with USERNAME"
+	echo_safe
+	echo_safe "  cksum VERSION"
+	echo_safe "  Check VERSION files with sha1sum, remove if bad"
+	echo_safe "  alias: check, checksum"
+	echo_safe
+	echo_safe "  rm_main VERSION"
+	echo_safe "  Remove main jar, json and natives for VERSION"
+	echo_safe "  alias: rm"
+	echo_safe
+	echo_safe "  lls_asset"
+	echo_safe "  List installed asset versions"
+	echo_safe "  alias: lsasset"
+	echo_safe
+	echo_safe "  rm_asset VERSION"
+	echo_safe "  Remove asset VERSION, this may break other versions that share"
+	echo_safe "  the same files and need to download with dl again"
+	echo_safe "  alias: rmasset"
 }
 
 mkdir -p "$BASEDIR"
