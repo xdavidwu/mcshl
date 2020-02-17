@@ -1,6 +1,7 @@
 #!/bin/sh
 
 BASEDIR=~/.minecraft
+[ ! -d "$BASEDIR" ] && BASEDIR="${XDG_DATA_HOME:-$HOME/.local/share}/minecraft"
 VLEVEL=1
 #VLEVEL=999
 
