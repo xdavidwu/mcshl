@@ -6,9 +6,14 @@ yet another minecraft launcher, but in shell
 
 * Any POSIX-compatible shell
 * jq
-* wget
+* GNU wget
 * cut, tr, sha1sum, mkdir, ls ... basic commands that almost always exist
+	* BusyBox may cover these
 * java for launching minecraft
+
+Windows support is tested and known to work with BusyBox. (busybox + jq + wget from scoop)
+
+Parallel downloading is disabled if `jobs` shell built-in is missing to avoid problems with downloading with too much processes.
 
 ## Current features
 
