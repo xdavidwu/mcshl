@@ -2,18 +2,24 @@
 
 BASEDIR=~/.minecraft
 [ ! -d "$BASEDIR" ] && BASEDIR="${XDG_DATA_HOME:-$HOME/.local/share}/minecraft"
+
+
+TOS=linux
+[ "$OS" = 'Windows_NT' ] && TOS=windows
+
+# Busybox may not have 'jobs' and parallel download can be dangerous
+command -v jobs || DISABLE_PARALLEL=1
+
 VLEVEL=1
 #VLEVEL=999
+
+WGET=wget
 
 WGET_LIM=128
 
 WGET_QUIET=0
 
 set -e
-
-echo_safe() {
-	printf "%s\n" "$*"
-}
 
 [ ! -n "$1" ] && set -- help
 
@@ -37,11 +43,9 @@ while true;do
 	esac
 done
 
-if [ "$WGET_QUIET" -gt "0" ];then
-	alias wget="wget -q --compression=auto"
-else
-	alias wget="wget --compression=auto"
-fi
+echo_safe() {
+	printf "%s\n" "$*"
+}
 
 log(){
 	if [ "$1" -le "$VLEVEL" ];then
@@ -50,15 +54,39 @@ log(){
 	fi
 }
 
+# Busybox wget built-in does not have options we need and may lack HTTPS support
+if [ "$(command -v wget)" = 'wget' ];then
+	log 2 "wget built-in detected"
+	OIFS=$IFS
+	IFS=':'
+	[ "$TOS" = 'windows' ] && IFS=';'
+	for P in $PATH;do
+		F=$P/wget
+		[ "$TOS" = 'windows' ] && F=$F.exe
+		[ -x "$F" ] && log 2 "found $F" && WGET="$F" && break
+	done
+	IFS=$OIFS
+fi
+
+if [ "$WGET_QUIET" -gt "0" ];then
+	alias wget="$WGET -q --compression=auto"
+else
+	alias wget="$WGET --compression=auto"
+fi
+
 basepath(){
 	echo_safe "$1" | rev | cut -f 2- -d '/' | rev
 }
 
 wget_wrapper(){
-	while [ "$(jobs | wc -l)" -gt "$WGET_LIM" ];do
-		sleep 1
-	done
-	wget $@ &
+	if [ -z "$DISABLE_PARALLEL" ];then
+		while [ "$(jobs | wc -l)" -gt "$WGET_LIM" ];do
+			sleep 1
+		done
+		wget -nc $@ &
+	else
+		wget -nc $@ || true
+	fi
 }
 
 sha1_chkrm(){
@@ -82,7 +110,7 @@ dl(){
 	VJSONF="versions/$1/$1.json"
 
 	# main jar
-	wget_wrapper -nc "$(jq -r '.downloads.client.url' $VJSONF)" -O "versions/$1/$1.jar"
+	wget_wrapper "$(jq -r '.downloads.client.url' $VJSONF)" -O "versions/$1/$1.jar"
 
 	# libraries
 	mkdir -p "libraries"
@@ -90,14 +118,14 @@ dl(){
 	for LJSON in $(jq -c '.libraries[]' $VJSONF);do
 		log 2 "found library $LJSON"
 		F=$(echo_safe $LJSON | jq -r '.downloads.artifact.path')
-		[ "$(echo_safe $LJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule allow not linux" && continue
-		[ "$(echo_safe $LJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule disallow linux" && continue
+		[ "$(echo_safe $LJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="'$TOS'"' 2>/dev/null)" = "true" ] && log 2 "block: rule allow not $TOS" && continue
+		[ "$(echo_safe $LJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="'$TOS'"' 2>/dev/null)" = "true" ] && log 2 "block: rule disallow $TOS" && continue
 
 		log 1 "downloading $F"
 		mkdir -p "libraries/""$(basepath $F)"
-		wget_wrapper -O "libraries/$F" -nc "$(echo_safe $LJSON | jq -r '.downloads.artifact.url')"
+		wget_wrapper -O "libraries/$F" "$(echo_safe $LJSON | jq -r '.downloads.artifact.url')"
 
-		NAVKEY="$(echo_safe $LJSON | jq '.natives.linux')"
+		NAVKEY="$(echo_safe $LJSON | jq '.natives.'$TOS)"
 
 		if [ "$NAVKEY" != "null" ];then
 			log 1 "downloading natives for $F"
@@ -119,7 +147,7 @@ dl(){
 	for HASH in $(jq -r '.objects[].hash' "$AF");do
 		HASHHEAD=$(echo_safe $HASH | head -c 2)
 		mkdir -p "assets/objects/$HASHHEAD"
-		wget_wrapper -nc -P "assets/objects/$HASHHEAD" https://resources.download.minecraft.net/$HASHHEAD/$HASH
+		wget_wrapper -P "assets/objects/$HASHHEAD" https://resources.download.minecraft.net/$HASHHEAD/$HASH
 	done
 
 	wait
@@ -153,8 +181,8 @@ launch(){
 
 	for LIB in $(jq -c '.libraries[]' $VJSONF);do
 		log 2 "found library $LIB"
-		[ "$(echo_safe $LIB | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule allow not linux" && continue
-		[ "$(echo_safe $LIB | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule disallow linux" && continue
+		[ "$(echo_safe $LIB | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="'$TOS'"' 2>/dev/null)" = "true" ] && log 2 "block: rule allow not $TOS" && continue
+		[ "$(echo_safe $LIB | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="'$TOS'"' 2>/dev/null)" = "true" ] && log 2 "block: rule disallow $TOS" && continue
 
 		LPATH=$(echo_safe "$LIB" | jq -r '.downloads.artifact.path')
 		if [ "$LPATH" != "null" ];then
@@ -176,36 +204,39 @@ launch(){
 					log 1 "downloading missing $GPATH from $URL"
 					mkdir -p "$(dirname libraries/$GPATH)"
 					wget_wrapper "$URL/$GPATH" -O "libraries/$GPATH"
-					wait
 				fi
 			fi
 		fi
 	done
+	wait
 	classpath=$(echo_safe "$classpath" | tail -c +2)
 	for VERF in $VJSONF;do
 		VER=$(basename "$VERF" ".json")
 		classpath=$classpath:versions/$VER/$VER.jar
 	done
+
+	# Windows java classpath format adjustment
+	[ "$TOS" = 'windows' ] && classpath=$(echo_safe $classpath | sed 's|:|\;|g;s|/|\\|g')
 	
 	for ARGJSON in $(jq -c '.arguments.jvm[]' $VJSONF);do
 		log 2 "found jvm arg $ARGJSON"
 		if [ "$(echo_safe $ARGJSON | head -c 1)" = '"' ];then
-			eval JVMARG=$(echo_safe "$ARGJSON" | jq -r '.')
+			eval JVMARG="$(echo_safe $ARGJSON | jq -r '.')"
 			JVMARGS=$JVMARGS'
 '$JVMARG
 		else
-			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule allow not linux" && continue
-			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule disallow linux" && continue
+			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="'$TOS'"' 2>/dev/null)" = "true" ] && log 2 "block: rule allow not $TOS" && continue
+			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="'$TOS'"' 2>/dev/null)" = "true" ] && log 2 "block: rule disallow $TOS" && continue
 			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="allow").os.arch|.!=null and .=="x86"' 2>/dev/null)" = "true" ] && [ -n "$(file -L $(which java) | grep x86-64)" ] && log 2 "block: rule allow x86" && continue
 
-			VALJSON=$(echo_safe ${ARGJSON} | tee /tmp/log | jq '.value')
+			VALJSON=$(echo_safe ${ARGJSON} | jq '.value')
 			if [ "$(echo_safe $VALJSON | head -c 1)" = '"' ];then
-				eval JVMARG=$(echo_safe "$VALJSON" | jq -r '.')
+				eval JVMARG="$(echo_safe $VALJSON | jq -r '.')"
 				JVMARGS=$JVMARGS'
 '$JVMARG
 			else
 				for VAL in $(echo_safe "$VALJSON" | jq -r '.[]');do
-					eval JVMARG=$VAL
+					eval JVMARG='"'"$VAL"'"'
 					JVMARGS=$JVMARGS'
 '$JVMARG
 				done
@@ -230,8 +261,8 @@ launch(){
 			GAMEARGS=$GAMEARGS'
 '$GAMEARG
 		else
-			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule allow not linux" && continue
-			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule disallow linux" && continue
+			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="'$TOS'"' 2>/dev/null)" = "true" ] && log 2 "block: rule allow not $TOS" && continue
+			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="'$TOS'"' 2>/dev/null)" = "true" ] && log 2 "block: rule disallow $TOS" && continue
 			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="allow").os.arch|.!=null and .=="x86"' 2>/dev/null)" = "true" ] && [ -n "$(file -L $(which java) | grep x86-64)" ] && log 2 "block: rule allow x86" && continue
 			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="allow").features!=null' 2>/dev/null)" = "true" ] && log 2 "block: skip demo and resolution" && continue
 
@@ -298,8 +329,8 @@ cksum(){
 	for LJSON in $(jq -c '.libraries[]' $VJSONF);do
 		log 2 "found library $LJSON"
 		F=$(echo_safe $LJSON | jq -r '.downloads.artifact.path')
-		[ "$(echo_safe $LJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule allow not linux" && continue
-		[ "$(echo_safe $LJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="linux"' 2>/dev/null)" = "true" ] && log 2 "block: rule disallow linux" && continue
+		[ "$(echo_safe $LJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="'$TOS'"' 2>/dev/null)" = "true" ] && log 2 "block: rule allow not $TOS" && continue
+		[ "$(echo_safe $LJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="'$TOS'"' 2>/dev/null)" = "true" ] && log 2 "block: rule disallow $TOS" && continue
 
 		sha1_chkrm "libraries/$F" "$(echo_safe $LJSON | jq -r '.downloads.artifact.sha1')"
 		# TODO find a way to cover natives?
