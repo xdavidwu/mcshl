@@ -7,8 +7,8 @@ BASEDIR=~/.minecraft
 TOS=linux
 [ "$OS" = 'Windows_NT' ] && TOS=windows
 
-# Busybox may not have 'jobs' and parallel download can be dangerous
-command -v jobs || DISABLE_PARALLEL=1
+# jobs is needed for parallel wget count limiting
+command -v jobs >/dev/null 2>&1 || DISABLE_PARALLEL=1
 
 VLEVEL=1
 #VLEVEL=999
