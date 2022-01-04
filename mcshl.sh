@@ -219,7 +219,7 @@ launch(){
 	for ARGJSON in $(jq -c '.arguments.jvm[]' $VJSONF);do
 		log 2 "found jvm arg $ARGJSON"
 		if [ "$(echo_safe $ARGJSON | head -c 1)" = '"' ];then
-			eval JVMARG="$(echo_safe $ARGJSON | jq -r '.')"
+			eval JVMARG=\""$(echo_safe "$ARGJSON" | jq -r '.')"\"
 			JVMARGS=$JVMARGS'
 '$JVMARG
 		else
