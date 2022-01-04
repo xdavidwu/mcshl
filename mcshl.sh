@@ -69,7 +69,7 @@ if [ "$(command -v wget)" = 'wget' ];then
 fi
 
 if [ "$WGET_QUIET" -gt "0" ];then
-	alias wget="wget -q"
+	alias wget="$WGET -q"
 fi
 
 basepath(){
