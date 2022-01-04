@@ -69,9 +69,7 @@ if [ "$(command -v wget)" = 'wget' ];then
 fi
 
 if [ "$WGET_QUIET" -gt "0" ];then
-	alias wget="$WGET -q --compression=auto"
-else
-	alias wget="$WGET --compression=auto"
+	alias wget="wget -q"
 fi
 
 basepath(){
