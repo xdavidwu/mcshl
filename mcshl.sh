@@ -174,8 +174,9 @@ launch(){
 		[ "$NVER" = "null" ] && log 1 "natives for $1 not found" && exit 1
 		natives_directory=versions/$NVER/natives
 	done
-	launcher_name=minecraft-launcher
-	launcher_version=2.0.1003
+	STRSUB='s/${natives_directory}/'"$(echo "$natives_directory" | sed 's/\//\\\//g;')"'/g;'\
+'s/${launcher_name}/minecraft-launcher/g;'\
+'s/${launcher_version}/2.0.1003/g;'
 
 	for LIB in $(jq -c '.libraries[]' $VJSONF);do
 		log 2 "found library $LIB"
@@ -215,13 +216,14 @@ launch(){
 
 	# Windows java classpath format adjustment
 	[ "$TOS" = 'windows' ] && classpath=$(echo_safe $classpath | sed 's|:|\;|g;s|/|\\|g')
+
+	STRSUB="$STRSUB"'s/${classpath}/'"$(echo "$classpath" | sed 's/\//\\\//g;')"'/g;'
 	
 	for ARGJSON in $(jq -c '.arguments.jvm[]' $VJSONF);do
 		log 2 "found jvm arg $ARGJSON"
 		if [ "$(echo_safe $ARGJSON | head -c 1)" = '"' ];then
-			eval JVMARG=\""$(echo_safe "$ARGJSON" | jq -r '.')"\"
 			JVMARGS=$JVMARGS'
-'$JVMARG
+'$(echo_safe "$ARGJSON" | jq -r '.' | sed "$STRSUB")
 		else
 			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="'$TOS'"' 2>/dev/null)" = "true" ] && log 2 "block: rule allow not $TOS" && continue
 			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="'$TOS'"' 2>/dev/null)" = "true" ] && log 2 "block: rule disallow $TOS" && continue
@@ -229,35 +231,31 @@ launch(){
 
 			VALJSON=$(echo_safe ${ARGJSON} | jq '.value')
 			if [ "$(echo_safe $VALJSON | head -c 1)" = '"' ];then
-				eval JVMARG="$(echo_safe $VALJSON | jq -r '.')"
 				JVMARGS=$JVMARGS'
-'$JVMARG
+'$(echo_safe "$VALJSON" | jq -r '.' | sed "$STRSUB")
 			else
 				for VAL in $(echo_safe "$VALJSON" | jq -r '.[]');do
-					eval JVMARG='"'"$VAL"'"'
 					JVMARGS=$JVMARGS'
-'$JVMARG
+'$(echo_safe "$VAL" | sed "$STRSUB")
 				done
 			fi
 		fi
 	done
 
-	auth_player_name=$2
-	version_name=$1
-	game_directory=.
-	assets_root=assets
-	assets_index_name=$(jq -r 'select(.assetIndex.id)|.assetIndex.id' $VJSONF | head -n 1)
-	auth_uuid=00000000-0000-0000-0000-000000000000
-	auth_access_token=null
-	user_type=legacy
-	version_type=$(jq -r 'select(.type)|.type' $VJSONF | head -n 1)
-
+	STRSUB="$STRSUB"'s/${auth_player_name}/'"$(echo "$2" | sed 's/\//\\\//g;')"'/g;'\
+'s/${version_name}/'"$(echo "$1" | sed 's/\//\\\//g;')"'/g;'\
+'s/${game_directory}/./g;'\
+'s/${assets_root}/assets/g;'\
+'s/${assets_index_name}/'"$(jq -r 'select(.assetIndex.id)|.assetIndex.id' $VJSONF | head -n 1 | sed 's/\//\\\//g;')"'/g;'\
+'s/${auth_uuid}/00000000-0000-0000-0000-000000000000/g;'\
+'s/${auth_access_token}/null/g;'\
+'s/${user_type}/legacy/g;'\
+'s/${version_type}/'"$(jq -r 'select(.type)|.type' $VJSONF | head -n 1 | sed 's/\//\\\//g;')"'/g;'
 	for ARGJSON in $(jq -c '.arguments.game[]' $VJSONF);do
 		log 2 "found game arg $ARGJSON"
 		if [ "$(echo_safe $ARGJSON | head -c 1)" = '"' ];then
-			eval GAMEARG=$(echo_safe "$ARGJSON" | jq -r '.')
 			GAMEARGS=$GAMEARGS'
-'$GAMEARG
+'$(echo_safe "$ARGJSON" | jq -r '.' | sed "$STRSUB")
 		else
 			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="allow").os.name|.!=null and .!="'$TOS'"' 2>/dev/null)" = "true" ] && log 2 "block: rule allow not $TOS" && continue
 			[ "$(echo_safe $ARGJSON | jq '.rules[]|select(.action=="disallow").os.name|.!=null and .=="'$TOS'"' 2>/dev/null)" = "true" ] && log 2 "block: rule disallow $TOS" && continue
@@ -266,14 +264,12 @@ launch(){
 
 			VALJSON=$(echo_safe "$ARGJSON" | jq '.value')
 			if [ "$(echo_safe $VALJSON | head -c 1)" = '"' ];then
-				eval GAMEARG=$(echo_safe "$VALJSON" | jq -r '.')
 				GAMEARGS=$GAMEARGS'
-'$GAMEARG
+'$(echo_safe "$VALJSON" | jq -r '.' | sed "$STRSUB")
 			else
 				for VAL in $(echo_safe "$VALJSON" | jq -r '.[]');do
-					eval GAMEARG=$VAL
 					GAMEARGS=$GAMEARGS'
-'$GAMEARG
+'$(echo_safe "$VAL" | sed "$STRSUB")
 				done
 			fi
 		fi
